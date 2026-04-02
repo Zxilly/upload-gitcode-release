@@ -47,6 +47,14 @@ jobs:
             out/*
 ```
 
+
+## API
+
+该 Action 通过 GitCode API v5 完成上传流程：
+
+- `POST /api/v5/repos/:owner/:repo/releases`
+- `GET /api/v5/repos/:owner/:repo/releases/:tag/upload_url`
+
 ## Development
 
 ```bash

@@ -2200,11 +2200,11 @@ function requireDiagnostics () {
 	return diagnostics;
 }
 
-var request$2;
+var request$1;
 var hasRequiredRequest$1;
 
 function requireRequest$1 () {
-	if (hasRequiredRequest$1) return request$2;
+	if (hasRequiredRequest$1) return request$1;
 	hasRequiredRequest$1 = 1;
 
 	const {
@@ -2609,8 +2609,8 @@ function requireRequest$1 () {
 	  }
 	}
 
-	request$2 = Request;
-	return request$2;
+	request$1 = Request;
+	return request$1;
 }
 
 var dispatcher;
@@ -17916,11 +17916,11 @@ function requireDispatcherWeakref () {
 
 /* globals AbortController */
 
-var request$1;
+var request;
 var hasRequiredRequest;
 
 function requireRequest () {
-	if (hasRequiredRequest) return request$1;
+	if (hasRequiredRequest) return request;
 	hasRequiredRequest = 1;
 
 	const { extractBody, mixinBody, cloneBody, bodyUnusable } = requireBody();
@@ -18955,8 +18955,8 @@ function requireRequest () {
 	  }
 	]);
 
-	request$1 = { Request, makeRequest, fromInnerRequest, cloneRequest };
-	return request$1;
+	request = { Request, makeRequest, fromInnerRequest, cloneRequest };
+	return request;
 }
 
 var fetch_1;
@@ -30278,6 +30278,78 @@ function create(patterns, options) {
 }
 
 const GITCODE_API_BASE = 'https://api.gitcode.com/api/v5';
+class HttpError extends Error {
+    status;
+    body;
+    constructor(message, status, body) {
+        super(message);
+        this.status = status;
+        this.body = body;
+    }
+}
+class GitCodeApi {
+    token;
+    constructor(token) {
+        this.token = token;
+    }
+    async createRelease(repo, payload) {
+        const response = await fetch(this.withToken(`/repos/${repo.owner}/${repo.repo}/releases`), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        return { status: response.status, body: await response.text() };
+    }
+    async getUploadUrl(repo, tag, fileName) {
+        const url = this.withToken(`/repos/${repo.owner}/${repo.repo}/releases/${encodeURIComponent(tag)}/upload_url`, { file_name: fileName });
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { Accept: 'application/json' }
+        });
+        const body = await response.text();
+        if (!response.ok) {
+            throw new HttpError(`Failed to get upload URL for ${fileName}`, response.status, body);
+        }
+        const parsed = safeParseJson(body);
+        if (!parsed || typeof parsed.url !== 'string' || parsed.url.length === 0) {
+            throw new Error(`Invalid upload URL response for ${fileName}: ${body}`);
+        }
+        return parsed;
+    }
+    async uploadBinary(uploadUrl, headers, content) {
+        const response = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: headers ?? {},
+            body: content
+        });
+        if (!response.ok) {
+            throw new HttpError('Failed to upload file', response.status, await response.text());
+        }
+    }
+    parseError(body) {
+        return safeParseJson(body);
+    }
+    withToken(path, query = {}) {
+        const url = new URL(`${GITCODE_API_BASE}${path}`);
+        for (const [key, value] of Object.entries(query)) {
+            url.searchParams.set(key, value);
+        }
+        url.searchParams.set('access_token', this.token);
+        return url.toString();
+    }
+}
+function safeParseJson(body) {
+    try {
+        return JSON.parse(body);
+    }
+    catch {
+        return null;
+    }
+}
+
 const RETRY_TIMES = 3;
 function parseRepo(input, name) {
     const [owner, repo, ...rest] = input.split('/');
@@ -30287,14 +30359,14 @@ function parseRepo(input, name) {
     return { owner, repo };
 }
 function getMultilineInput(name, required = false) {
-    const lines = getInput(name, { required })
+    const values = getInput(name, { required })
         .split(/\r?\n/)
-        .map(line => line.trim())
+        .map(item => item.trim())
         .filter(Boolean);
-    if (required && lines.length === 0) {
-        throw new Error(`Input "${name}" is required and must contain at least one value`);
+    if (required && values.length === 0) {
+        throw new Error(`Input "${name}" is required and must include at least one value`);
     }
-    return lines;
+    return values;
 }
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -30308,92 +30380,54 @@ async function withRetry(label, fn, retries = RETRY_TIMES) {
         catch (error) {
             lastError = error;
             if (attempt < retries) {
-                const delayMs = attempt * 1000;
-                warning(`${label} failed on attempt ${attempt}/${retries}, retrying in ${delayMs}ms`);
-                await sleep(delayMs);
+                const waitMs = attempt * 1000;
+                warning(`${label} failed on attempt ${attempt}/${retries}, retrying in ${waitMs}ms`);
+                await sleep(waitMs);
             }
         }
     }
     throw lastError;
 }
-async function request(url, init) {
-    return withRetry(`${init.method ?? 'GET'} ${url}`, () => fetch(url, init));
-}
-async function createReleaseIfNeeded(repo, token, release) {
-    const url = `${GITCODE_API_BASE}/repos/${repo.owner}/${repo.repo}/releases?access_token=${encodeURIComponent(token)}`;
-    const response = await request(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(release)
-    });
-    if (response.ok) {
-        info(`Created release ${release.tag_name}`);
-        return;
-    }
-    const text = await response.text();
-    let errorCode;
-    try {
-        const parsed = JSON.parse(text);
-        errorCode = parsed.error_code;
-    }
-    catch {
-        // ignore parse failure
-    }
-    if (response.status === 409 || errorCode === 409) {
-        info(`Release ${release.tag_name} already exists, continue uploading assets`);
-        return;
-    }
-    throw new Error(`Failed to create release. status=${response.status}, body=${text}`);
-}
-async function getUploadUrl(repo, token, tag, fileName) {
-    const url = `${GITCODE_API_BASE}/repos/${repo.owner}/${repo.repo}/releases/${encodeURIComponent(tag)}/upload_url?file_name=${encodeURIComponent(fileName)}&access_token=${encodeURIComponent(token)}`;
-    const response = await request(url, {
-        method: 'GET',
-        headers: { Accept: 'application/json' }
-    });
-    const text = await response.text();
-    if (!response.ok) {
-        throw new Error(`Failed to get upload URL for ${fileName}. status=${response.status}, body=${text}`);
-    }
-    const parsed = JSON.parse(text);
-    if (!parsed.url) {
-        throw new Error(`Invalid upload URL response for ${fileName}: ${text}`);
-    }
-    return parsed;
-}
-async function uploadFile(uploadInfo, filePath) {
-    const fileName = path$1.basename(filePath);
-    const content = await promises.readFile(filePath);
-    const response = await request(uploadInfo.url, {
-        method: 'PUT',
-        headers: uploadInfo.headers ?? {},
-        body: content
-    });
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Failed to upload ${fileName}. status=${response.status}, body=${text}`);
-    }
-}
 async function collectFiles(patterns) {
-    const results = new Set();
+    const files = new Set();
     for (const pattern of patterns) {
         const globber = await create(pattern);
-        for await (const file of globber.globGenerator()) {
-            results.add(file);
+        for await (const filePath of globber.globGenerator()) {
+            files.add(filePath);
         }
     }
-    return [...results];
+    return [...files];
+}
+async function ensureRelease(api, repo, payload) {
+    const { status, body } = await withRetry('create release', () => api.createRelease(repo, payload));
+    if (status >= 200 && status < 300) {
+        info(`Created release ${payload.tag_name}`);
+        return;
+    }
+    const error = api.parseError(body);
+    if (status === 409 || error?.error_code === 409) {
+        info(`Release ${payload.tag_name} already exists, continue uploading files`);
+        return;
+    }
+    throw new Error(`Failed to create release. status=${status}, body=${body}`);
+}
+async function uploadOneFile(api, repo, tag, filePath) {
+    const fileName = path$1.basename(filePath);
+    const fileBuffer = await promises.readFile(filePath);
+    const content = fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength);
+    const uploadInfo = await withRetry(`get upload url for ${fileName}`, () => api.getUploadUrl(repo, tag, fileName));
+    await withRetry(`upload ${fileName}`, () => api.uploadBinary(uploadInfo.url, uploadInfo.headers, content));
 }
 async function run() {
     const gitcodeToken = getInput('gitcode-token', { required: true });
     const targetRepoInput = getInput('target-repo', { required: true });
-    const tagName = getInput('tag', { required: true });
-    const releaseName = getInput('name') || tagName;
-    const releaseBody = getInput('body');
+    const tag = getInput('tag', { required: true });
+    const name = getInput('name') || tag;
+    const body = getInput('body');
     const targetCommitish = getInput('target-commitish') || process.env.GITHUB_SHA || 'main';
     const filePatterns = getMultilineInput('files', true);
     const failIfNoFiles = getBooleanInput('fail-if-no-files');
-    const targetRepo = parseRepo(targetRepoInput, 'target-repo');
+    const repo = parseRepo(targetRepoInput, 'target-repo');
     const files = await collectFiles(filePatterns);
     if (files.length === 0) {
         const message = `No files matched patterns: ${filePatterns.join(', ')}`;
@@ -30404,22 +30438,26 @@ async function run() {
         return;
     }
     info(`Found ${files.length} file(s) to upload`);
-    await createReleaseIfNeeded(targetRepo, gitcodeToken, {
-        tag_name: tagName,
-        name: releaseName,
-        body: releaseBody,
+    const api = new GitCodeApi(gitcodeToken);
+    await ensureRelease(api, repo, {
+        tag_name: tag,
+        name,
+        body,
         target_commitish: targetCommitish
     });
     for (const filePath of files) {
         const fileName = path$1.basename(filePath);
         info(`Uploading ${fileName} from ${filePath}`);
-        const uploadInfo = await getUploadUrl(targetRepo, gitcodeToken, tagName, fileName);
-        await uploadFile(uploadInfo, filePath);
+        await uploadOneFile(api, repo, tag, filePath);
         info(`Uploaded ${fileName}`);
     }
-    info(`Done. Uploaded ${files.length} file(s) to ${targetRepoInput}@${tagName}`);
+    info(`Done. Uploaded ${files.length} file(s) to ${targetRepoInput}@${tag}`);
 }
 run().catch(error => {
+    if (error instanceof HttpError) {
+        setFailed(`${error.message}. status=${error.status}, body=${error.body}`);
+        return;
+    }
     setFailed(error instanceof Error ? error.message : String(error));
 });
 //# sourceMappingURL=index.js.map
