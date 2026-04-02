@@ -1,0 +1,30 @@
+{
+  "name": "upload-gitcode-release",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Action to upload local files to GitCode release.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "rollup -c",
+    "package": "pnpm run build",
+    "lint": "tsc --noEmit",
+    "test": "echo \"No tests yet\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@actions/core": "latest",
+    "@actions/glob": "latest"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "latest",
+    "@rollup/plugin-json": "latest",
+    "@rollup/plugin-node-resolve": "latest",
+    "@rollup/plugin-typescript": "latest",
+    "@types/node": "latest",
+    "rollup": "latest",
+    "typescript": "latest",
+    "tslib": "latest"
+  }
+}
