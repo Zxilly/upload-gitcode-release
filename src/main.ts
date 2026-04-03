@@ -16,20 +16,6 @@ function parseRepo(input: string, name: string): RepoRef {
   return {owner, repo}
 }
 
-function getMultilineInput(name: string, required = false): string[] {
-  const values = core
-    .getInput(name, {required})
-    .split(/\r?\n/)
-    .map(item => item.trim())
-    .filter(Boolean)
-
-  if (required && values.length === 0) {
-    throw new Error(`Input "${name}" is required and must include at least one value`)
-  }
-
-  return values
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -99,7 +85,7 @@ async function run(): Promise<void> {
   const name = core.getInput('name') || tag
   const body = core.getInput('body')
   const targetCommitish = core.getInput('target-commitish') || process.env.GITHUB_SHA || 'main'
-  const filePatterns = getMultilineInput('files', true)
+  const filePatterns = core.getMultilineInput('files', {required: true})
   const failIfNoFiles = core.getBooleanInput('fail-if-no-files')
 
   const repo = parseRepo(targetRepoInput, 'target-repo')
@@ -124,12 +110,12 @@ async function run(): Promise<void> {
     target_commitish: targetCommitish
   })
 
-  for (const filePath of files) {
+  await Promise.all(files.map(async filePath => {
     const fileName = path.basename(filePath)
     core.info(`Uploading ${fileName} from ${filePath}`)
     await uploadOneFile(api, repo, tag, filePath)
     core.info(`Uploaded ${fileName}`)
-  }
+  }))
 
   core.info(`Done. Uploaded ${files.length} file(s) to ${targetRepoInput}@${tag}`)
 }

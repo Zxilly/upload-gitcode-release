@@ -8,10 +8,10 @@ import type {
 const GITCODE_API_BASE = 'https://api.gitcode.com/api/v5'
 
 export class HttpError extends Error {
-  public readonly status: number
-  public readonly body: string
+  readonly status: number
+  readonly body: string
 
-  public constructor(message: string, status: number, body: string) {
+  constructor(message: string, status: number, body: string) {
     super(message)
     this.status = status
     this.body = body
@@ -21,11 +21,11 @@ export class HttpError extends Error {
 export class GitCodeApi {
   private readonly token: string
 
-  public constructor(token: string) {
+  constructor(token: string) {
     this.token = token
   }
 
-  public async createRelease(repo: RepoRef, payload: CreateReleasePayload): Promise<{status: number; body: string}> {
+  async createRelease(repo: RepoRef, payload: CreateReleasePayload): Promise<{status: number; body: string}> {
     const response = await fetch(this.withToken(`/repos/${repo.owner}/${repo.repo}/releases`), {
       method: 'POST',
       headers: {
@@ -38,7 +38,7 @@ export class GitCodeApi {
     return {status: response.status, body: await response.text()}
   }
 
-  public async getUploadUrl(repo: RepoRef, tag: string, fileName: string): Promise<GitCodeUploadUrlResponse> {
+  async getUploadUrl(repo: RepoRef, tag: string, fileName: string): Promise<GitCodeUploadUrlResponse> {
     const url = this.withToken(
       `/repos/${repo.owner}/${repo.repo}/releases/${encodeURIComponent(tag)}/upload_url`,
       {file_name: fileName}
@@ -62,7 +62,7 @@ export class GitCodeApi {
     return parsed
   }
 
-  public async uploadBinary(uploadUrl: string, headers: Record<string, string> | undefined, content: ArrayBuffer): Promise<void> {
+  async uploadBinary(uploadUrl: string, headers: Record<string, string> | undefined, content: ArrayBuffer): Promise<void> {
     const response = await fetch(uploadUrl, {
       method: 'PUT',
       headers: headers ?? {},
@@ -74,7 +74,7 @@ export class GitCodeApi {
     }
   }
 
-  public parseError(body: string): GitCodeErrorResponse | null {
+  parseError(body: string): GitCodeErrorResponse | null {
     return safeParseJson<GitCodeErrorResponse>(body)
   }
 
