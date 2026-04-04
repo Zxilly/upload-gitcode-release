@@ -18,7 +18,7 @@ inputs:
     description: Release description/body.
     required: false
   target-commitish:
-    description: Target branch or commit SHA. Defaults to github.sha, then main.
+    description: Target branch or commit SHA. Defaults to main.
     required: false
   files:
     description: |

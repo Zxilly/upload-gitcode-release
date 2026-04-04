@@ -4,6 +4,7 @@
   "private": true,
   "description": "GitHub Action to upload local files to GitCode release.",
   "main": "dist/index.js",
+  "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20"
   },

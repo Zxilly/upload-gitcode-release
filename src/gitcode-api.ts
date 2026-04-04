@@ -27,7 +27,7 @@ export class GitCodeApi {
   }
 
   async createRelease(repo: RepoRef, payload: CreateReleasePayload): Promise<{ status: number, body: string }> {
-    const response = await fetch(this.buildUrl(`/repos/${repo.owner}/${repo.repo}/releases`), {
+    const response = await fetch(this.repoUrl(repo, '/releases'), {
       method: 'POST',
       headers: {
         ...this.authHeaders(),
@@ -41,10 +41,7 @@ export class GitCodeApi {
   }
 
   async getUploadUrl(repo: RepoRef, tag: string, fileName: string): Promise<GitCodeUploadUrlResponse> {
-    const url = this.buildUrl(
-      `/repos/${repo.owner}/${repo.repo}/releases/${encodeURIComponent(tag)}/upload_url`,
-      { file_name: fileName },
-    )
+    const url = this.repoUrl(repo, `/releases/${encodeURIComponent(tag)}/upload_url`, { file_name: fileName })
 
     const response = await fetch(url, {
       method: 'GET',
@@ -91,6 +88,10 @@ export class GitCodeApi {
 
   private authHeaders(): Record<string, string> {
     return { Authorization: `Bearer ${this.token}` }
+  }
+
+  private repoUrl(repo: RepoRef, suffix: string, query: Record<string, string> = {}): string {
+    return this.buildUrl(`/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}${suffix}`, query)
   }
 
   private buildUrl(path: string, query: Record<string, string> = {}): string {

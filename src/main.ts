@@ -28,6 +28,9 @@ async function withRetry<T>(label: string, fn: () => Promise<T>, retries = RETRY
       return await fn()
     }
     catch (error) {
+      if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
+        throw error
+      }
       lastError = error
       if (attempt < retries) {
         const waitMs = attempt * 1000
@@ -44,7 +47,7 @@ async function collectFiles(patterns: string[]): Promise<string[]> {
   const files = new Set<string>()
 
   for (const pattern of patterns) {
-    const globber = await glob.create(pattern)
+    const globber = await glob.create(pattern, { matchDirectories: false })
     for await (const filePath of globber.globGenerator()) {
       files.add(filePath)
     }
@@ -81,6 +84,7 @@ async function uploadOneFile(api: GitCodeApi, repo: RepoRef, tag: string, filePa
 
 async function run(): Promise<void> {
   const gitcodeToken = core.getInput('gitcode-token', { required: true })
+  core.setSecret(gitcodeToken)
   const targetRepoInput = core.getInput('target-repo', { required: true })
   const tag = core.getInput('tag', { required: true })
   const name = core.getInput('name') || tag

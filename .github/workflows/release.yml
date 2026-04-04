@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -30,6 +34,15 @@ jobs:
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
+          # Validate tag format
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([._-].*)?$ ]]; then
+            echo "::error::Invalid tag format: $TAG"
+            exit 1
+          fi
+
+          # Verify build output exists
+          test -f dist/index.js || { echo "::error::Build did not produce dist/index.js"; exit 1; }
+
           # Configure git for the commit
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -37,17 +50,17 @@ jobs:
           # Force-add dist (ignored by .gitignore)
           git add -f dist/
 
-          # Create a dangling commit (not on any branch) that includes dist
+          # Create a dangling commit (not on any branch) containing full tree + dist
           TREE=$(git write-tree)
-          COMMIT=$(git commit-tree "$TREE" -p HEAD -m "release: build dist for ${TAG}")
+          COMMIT=$(git commit-tree "$TREE" -p HEAD -m "release: build dist for $TAG")
 
           # Move the release tag to the new commit
           git tag -f "$TAG" "$COMMIT"
-          git push -f origin "refs/tags/${TAG}"
+          git push -f origin "refs/tags/$TAG"
 
           # Update major version tag (e.g., v1.2.3 -> v1)
-          MAJOR=$(echo "$TAG" | grep -oP '^v\d+' || true)
+          MAJOR=$(echo "$TAG" | grep -oE '^v[0-9]+' || true)
           if [ -n "$MAJOR" ]; then
             git tag -f "$MAJOR" "$COMMIT"
-            git push -f origin "refs/tags/${MAJOR}"
+            git push -f origin "refs/tags/$MAJOR"
           fi
