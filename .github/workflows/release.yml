@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run lint
+
+      - run: pnpm run build
+
+      - name: Create release commit and update tags
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          # Configure git for the commit
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Force-add dist (ignored by .gitignore)
+          git add -f dist/
+
+          # Create a dangling commit (not on any branch) that includes dist
+          TREE=$(git write-tree)
+          COMMIT=$(git commit-tree "$TREE" -p HEAD -m "release: build dist for ${TAG}")
+
+          # Move the release tag to the new commit
+          git tag -f "$TAG" "$COMMIT"
+          git push -f origin "refs/tags/${TAG}"
+
+          # Update major version tag (e.g., v1.2.3 -> v1)
+          MAJOR=$(echo "$TAG" | grep -oP '^v\d+' || true)
+          if [ -n "$MAJOR" ]; then
+            git tag -f "$MAJOR" "$COMMIT"
+            git push -f origin "refs/tags/${MAJOR}"
+          fi

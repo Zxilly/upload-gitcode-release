@@ -1,0 +1,39 @@
+name: Upload files to GitCode release
+description: Upload local files to a GitCode release (create release if needed).
+author: Zxilly
+inputs:
+  gitcode-token:
+    description: GitCode personal access token used to create releases and upload files.
+    required: true
+  target-repo:
+    description: Target GitCode repository in owner/repo format.
+    required: true
+  tag:
+    description: Release tag in GitCode.
+    required: true
+  name:
+    description: Release name. Defaults to tag.
+    required: false
+  body:
+    description: Release description/body.
+    required: false
+  target-commitish:
+    description: Target branch or commit SHA. Defaults to github.sha, then main.
+    required: false
+  files:
+    description: |
+      Newline-delimited file paths or glob patterns to upload.
+      Example:
+        dist/*.tgz
+        checksums.txt
+    required: true
+  fail-if-no-files:
+    description: Fail the action when no files are matched.
+    required: false
+    default: 'true'
+runs:
+  using: node20
+  main: dist/index.js
+branding:
+  icon: upload-cloud
+  color: blue
