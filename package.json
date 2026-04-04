@@ -2,9 +2,9 @@
   "name": "upload-gitcode-release",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "description": "GitHub Action to upload local files to GitCode release.",
   "main": "dist/index.js",
-  "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20"
   },
